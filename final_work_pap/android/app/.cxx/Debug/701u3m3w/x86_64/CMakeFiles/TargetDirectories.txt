@@ -1,0 +1,2 @@
+C:/final-work-pap/final-work-pap/final_work_pap/android/app/.cxx/Debug/701u3m3w/x86_64/CMakeFiles/edit_cache.dir
+C:/final-work-pap/final-work-pap/final_work_pap/android/app/.cxx/Debug/701u3m3w/x86_64/CMakeFiles/rebuild_cache.dir
