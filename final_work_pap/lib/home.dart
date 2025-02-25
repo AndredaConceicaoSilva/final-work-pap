@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'matriculas.dart';
 import 'consumos.dart';
 import 'view_matr.dart';
+import 'view_matr.dart'; // Asegúrate de importar tu archivo de edición de matrícula
 
 void main() {
   runApp(MyApp());
@@ -205,7 +206,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
                         return Column(
                           children: consumoSnapshot.data!.docs.map((consumo) {
-                            var data = consumo.data() as Map<String, dynamic>?;
+                            var data = consumo.data() as Map<String, dynamic>?; // Añadir casting a Map
                             final nome = data?['nome'] ?? 'Nome indisponível';
                             final valor = data?['valor']?.toString() ?? 'Valor não informado';
                             final dataRegistro = data?['data'] is Timestamp

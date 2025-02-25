@@ -77,7 +77,7 @@ class ViewMatr extends StatelessWidget {
     );
   }
 
-  void _removeMatricula(BuildContext context, String documentId) { // Adicione o context como parâmetro
+  void _removeMatricula(BuildContext context, String documentId) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -312,7 +312,8 @@ class _EditMatrScreenState extends State<EditMatrScreen> {
                 onPressed: _updateMatricula,
                 child: Text('Salvar'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
+                  backgroundColor: Colors.red, // Cor de fundo do botão
+                  foregroundColor: Colors.white, // Cor do texto do botão
                 ),
               ),
             ],

@@ -24,7 +24,6 @@ class _ConsumosState extends State<Consumos> {
     int km = int.tryParse(_kmController.text.trim()) ?? 0;
     double custo = double.tryParse(_custoController.text.trim()) ?? 0;
 
-    // Validação para garantir que os valores não sejam 0 ou nulos
     if (litros <= 0 || km <= 0 || custo <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Por favor, preencha todos os campos corretamente!')),
@@ -34,32 +33,23 @@ class _ConsumosState extends State<Consumos> {
 
     try {
       FirebaseFirestore firestore = FirebaseFirestore.instance;
-      
-      // Verificar se a quilometragem já existe na subcoleção de registros
       CollectionReference registrosRef = firestore.collection('aut_consum').doc(matricula).collection('registros');
       QuerySnapshot querySnapshot = await registrosRef.where('quilometragem', isEqualTo: km).get();
 
       if (querySnapshot.docs.isNotEmpty) {
-        // Se já houver um registro com a mesma quilometragem, mostramos um erro
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Essa quilometragem já foi registrada!')),
         );
         return;
       }
 
-      // Acessa a coleção 'aut_consum' e o documento da matrícula
       DocumentReference matriculaRef = firestore.collection('aut_consum').doc(matricula);
 
-      // Adiciona ou atualiza a matrícula
       await matriculaRef.set({
         'matricula': matricula,
         'data_criacao': Timestamp.now(),
       }, SetOptions(merge: true));
 
-      print("Matrícula $matricula criada/atualizada com sucesso!");
-
-      // Criando a subcoleção 'registros' dentro do documento da matrícula
-      // Adiciona o consumo como um novo documento dentro da subcoleção 'registros'
       await registrosRef.add({
         'data_de_abastecimento': Timestamp.now(),
         'quilometragem': km,
@@ -67,20 +57,14 @@ class _ConsumosState extends State<Consumos> {
         'custo': custo,
       });
 
-      print("Consumo salvo com sucesso!");
-
-      // Exibe uma mensagem de sucesso
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Consumo salvo com sucesso!')),
       );
 
-      // Limpa os campos após salvar o consumo
       _litrosController.clear();
       _kmController.clear();
       _custoController.clear();
-
     } catch (e) {
-      print("Erro ao salvar consumo: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erro ao salvar: $e')),
       );
@@ -102,82 +86,20 @@ class _ConsumosState extends State<Consumos> {
           key: _formKey,
           child: Column(
             children: [
-              TextFormField(
-                initialValue: widget.matricula,
-                decoration: InputDecoration(
-                  labelText: 'Matrícula',
-                  labelStyle: TextStyle(color: Colors.white),
-                  filled: true,
-                  fillColor: Colors.black,
-                  border: OutlineInputBorder(),
-                ),
-                style: TextStyle(color: Colors.white),
-                readOnly: true,
-              ),
+              _buildTextField('Matrícula', widget.matricula, readOnly: true),
               SizedBox(height: 20),
-              TextFormField(
-                controller: _litrosController,
-                decoration: InputDecoration(
-                  labelText: 'Litros Abastecidos',
-                  labelStyle: TextStyle(color: Colors.white),
-                  filled: true,
-                  fillColor: Colors.black,
-                  border: OutlineInputBorder(),
-                ),
-                style: TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.isEmpty || double.tryParse(value) == null || double.parse(value) <= 0) {
-                    return 'Por favor, insira um valor válido para os litros.';
-                  }
-                  return null;
-                },
-              ),
+              _buildTextField('Litros Abastecidos', '', controller: _litrosController, isNumeric: true),
               SizedBox(height: 20),
-              TextFormField(
-                controller: _kmController,
-                decoration: InputDecoration(
-                  labelText: 'Quilometragem',
-                  labelStyle: TextStyle(color: Colors.white),
-                  filled: true,
-                  fillColor: Colors.black,
-                  border: OutlineInputBorder(),
-                ),
-                style: TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.isEmpty || int.tryParse(value) == null || int.parse(value) <= 0) {
-                    return 'Por favor, insira uma quilometragem válida.';
-                  }
-                  return null;
-                },
-              ),
+              _buildTextField('Quilometragem', '', controller: _kmController, isNumeric: true),
               SizedBox(height: 20),
-              TextFormField(
-                controller: _custoController,
-                decoration: InputDecoration(
-                  labelText: 'Custo do Abastecimento',
-                  labelStyle: TextStyle(color: Colors.white),
-                  filled: true,
-                  fillColor: Colors.black,
-                  border: OutlineInputBorder(),
-                ),
-                style: TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.isEmpty || double.tryParse(value) == null || double.parse(value) <= 0) {
-                    return 'Por favor, insira um custo válido.';
-                  }
-                  return null;
-                },
-              ),
+              _buildTextField('Custo do Abastecimento', '', controller: _custoController, isNumeric: true),
               SizedBox(height: 20),
               Center(
                 child: ElevatedButton(
                   onPressed: _saveConsumo,
                   child: Text('Salvar Consumo'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
+                    backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
                   ),
                 ),
@@ -187,6 +109,29 @@ class _ConsumosState extends State<Consumos> {
         ),
       ),
       backgroundColor: Colors.black,
+    );
+  }
+
+  Widget _buildTextField(String label, String initialValue, {TextEditingController? controller, bool readOnly = false, bool isNumeric = false}) {
+    return TextFormField(
+      controller: controller,
+      initialValue: controller == null ? initialValue : null,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: Colors.white),
+        filled: true,
+        fillColor: Colors.black,
+        border: OutlineInputBorder(),
+      ),
+      style: TextStyle(color: Colors.white),
+      keyboardType: isNumeric ? TextInputType.number : TextInputType.text,
+      readOnly: readOnly,
+      validator: (value) {
+        if (value == null || value.isEmpty || (isNumeric && double.tryParse(value) == null) || (isNumeric && double.parse(value) <= 0)) {
+          return 'Por favor, insira um valor válido.';
+        }
+        return null;
+      },
     );
   }
 }
