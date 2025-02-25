@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart'; // Certifique-se de adicionar esta linha para usar o DateFormat
 import 'matriculas.dart';
 import 'consumos.dart';
 import 'view_matr.dart';
-import 'view_matr.dart'; // Asegúrate de importar tu archivo de edición de matrícula
 
 void main() {
   runApp(MyApp());
@@ -41,7 +41,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     });
 
     if (index == 1) {
-      _showMatriculaSelectionDialog();
+      _showMatriculaSelectionDialogForFilter();
     } else if (index == 2) {
       Navigator.push(context, MaterialPageRoute(builder: (context) => Matriculas()));
     } else if (index == 3) {
@@ -49,11 +49,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-  void _onAddButtonPressed() {
-    _showMatriculaSelectionForAdd();
-  }
-
-  Future<void> _showMatriculaSelectionForAdd() async {
+  void _showMatriculaSelectionDialogForFilter() async {
     try {
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance.collection('matriculas').get();
       List<String> matriculas = querySnapshot.docs.map((doc) => doc['matricula'] as String).toList();
@@ -69,18 +65,18 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
-            title: Text('Selecione a Matrícula'),
+            backgroundColor: Colors.grey[800],
+            title: Text('Selecione a Matrícula', style: TextStyle(color: Colors.white)),
             content: SingleChildScrollView(
               child: Column(
                 children: matriculas.map((matricula) {
                   return ListTile(
-                    title: Text(matricula),
+                    title: Text(matricula, style: TextStyle(color: Colors.white)),
                     onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => Consumos(matricula: matricula)),
-                      );
+                      setState(() {
+                        _selectedMatricula = matricula; // Define a matrícula selecionada
+                      });
+                      Navigator.pop(context); // Fecha o diálogo
                     },
                   );
                 }).toList(),
@@ -96,7 +92,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-  void _showMatriculaSelectionDialog() async {
+  void _showMatriculaSelectionDialogForAdd() async {
     try {
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance.collection('matriculas').get();
       List<String> matriculas = querySnapshot.docs.map((doc) => doc['matricula'] as String).toList();
@@ -112,17 +108,25 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
-            title: Text('Selecione a Matrícula'),
+            backgroundColor: Colors.grey[800],
+            title: Text('Selecione a Matrícula', style: TextStyle(color: Colors.white)),
             content: SingleChildScrollView(
               child: Column(
                 children: matriculas.map((matricula) {
                   return ListTile(
-                    title: Text(matricula),
+                    title: Text(matricula, style: TextStyle(color: Colors.white)),
                     onTap: () {
                       setState(() {
-                        _selectedMatricula = matricula;
+                        _selectedMatricula = matricula; // Define a matrícula selecionada
                       });
-                      Navigator.pop(context);
+                      Navigator.pop(context); // Fecha o diálogo
+                      // Navega para a tela de Consumos após selecionar a matrícula
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => Consumos(matricula: _selectedMatricula!),
+                        ),
+                      );
                     },
                   );
                 }).toList(),
@@ -140,7 +144,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   void _removeFilter() {
     setState(() {
-      _selectedMatricula = null;
+      _selectedMatricula = null; // Limpa a matrícula selecionada
     });
   }
 
@@ -186,9 +190,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   return _selectedMatricula == null || _selectedMatricula == matriculaId;
                 }).expand((doc) {
                   return [
-                    ListTile(
-                      title: Text('Matrícula: ${doc.id}', style: TextStyle(color: Colors.white)),
-                    ),
                     StreamBuilder<QuerySnapshot>(
                       stream: doc.reference.collection('registros').snapshots(),
                       builder: (context, consumoSnapshot) {
@@ -206,16 +207,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
                         return Column(
                           children: consumoSnapshot.data!.docs.map((consumo) {
-                            var data = consumo.data() as Map<String, dynamic>?; // Añadir casting a Map
-                            final nome = data?['nome'] ?? 'Nome indisponível';
-                            final valor = data?['valor']?.toString() ?? 'Valor não informado';
-                            final dataRegistro = data?['data'] is Timestamp
-                                ? (data?['data'] as Timestamp).toDate().toString()
+                            var data = consumo.data() as Map<String, dynamic>?; // Casting a Map
+                            var dataAbastecimentoValue = data?['data_de_abastecimento'];
+                            final dataAbastecimento = dataAbastecimentoValue is Timestamp
+                                ? DateFormat('dd/MM/yyyy').format(dataAbastecimentoValue.toDate())
                                 : 'Data não disponível';
+                            final quilometragem = data?['quilometragem']?.toString() ?? 'Quilometragem não informada';
+                            final litrosAbastecidos = data?['litros_abastecidos']?.toString() ?? 'Litros não informados';
+                            final custo = data?['custo']?.toString() ?? 'Custo não informado';
+
+                            // Exibir apenas os detalhes do abastecimento, sem a matrícula
                             return ListTile(
-                              title: Text(nome, style: TextStyle(color: Colors.white)),
+                              title: Text('Data: $dataAbastecimento', style: TextStyle(color: Colors.white)),
                               subtitle: Text(
-                                'Valor: $valor\nData: $dataRegistro',
+                                'Quilometragem: $quilometragem\nLitros: $litrosAbastecidos\nCusto: € $custo', // Alterado para Euro
                                 style: TextStyle(color: Colors.grey),
                               ),
                             );
@@ -234,7 +239,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          if (_selectedMatricula != null)
+          if (_selectedMatricula != null) // Mostra o botão apenas se uma matrícula estiver selecionada
             FloatingActionButton(
               onPressed: _removeFilter,
               backgroundColor: Colors.grey,
@@ -243,7 +248,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             ),
           SizedBox(height: 10),
           FloatingActionButton(
-            onPressed: _onAddButtonPressed,
+            onPressed: _showMatriculaSelectionDialogForAdd, // Atualizado para chamar a função de seleção de matrícula
             backgroundColor: Colors.red,
             child: Icon(Icons.add, color: Colors.white, size: 30),
             heroTag: 'add',
