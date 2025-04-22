@@ -1,5 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'dart:math';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(), // Dark theme as default
+      home: Matriculas(),
+    );
+  }
+}
 
 class Matriculas extends StatefulWidget {
   @override
@@ -8,240 +32,299 @@ class Matriculas extends StatefulWidget {
 
 class _MatriculasState extends State<Matriculas> {
   final _formKey = GlobalKey<FormState>();
-
   final TextEditingController _matriculaController = TextEditingController();
   final TextEditingController _marcaController = TextEditingController();
   final TextEditingController _modeloController = TextEditingController();
-  final TextEditingController _donoController = TextEditingController(); // Novo controlador
+  final TextEditingController _donoController = TextEditingController();
 
   int? _mesSelecionado;
   int? _anoSelecionado;
-
-  final RegExp matriculaRegex =
-      RegExp(r'^\d{2}-[A-Z]{2}-\d{2}$|^\d{2}-\d{2}-[A-Z]{2}$|^[A-Z]{2}-\d{2}-\d{2}$');
+  bool _isLoading = false;
 
   void _formatarMatricula(String value) {
-    String cleaned = value.replaceAll(RegExp(r'[^A-Z0-9]'), '').toUpperCase();
+    final cursorPosition = _matriculaController.selection.baseOffset;
+    final isDeleting = value.length < _matriculaController.text.length;
+
+    String cleaned = value.replaceAll(RegExp(r'[-\s]'), '').toUpperCase();
+
     if (cleaned.length > 6) {
       cleaned = cleaned.substring(0, 6);
     }
 
     String formatted = '';
     for (int i = 0; i < cleaned.length; i++) {
-      if (i == 2 || i == 4) {
+      if (i > 0 && i % 2 == 0) {
         formatted += '-';
       }
       formatted += cleaned[i];
     }
 
+    int newCursorPosition = cursorPosition;
+    if (!isDeleting && cursorPosition >= 0) {
+      int hyphensBeforeCursor = formatted
+          .substring(0, min(cursorPosition, formatted.length))
+          .split('-')
+          .length - 1;
+      newCursorPosition = cursorPosition + hyphensBeforeCursor;
+    }
+
+    newCursorPosition = newCursorPosition.clamp(0, formatted.length);
+
     _matriculaController.value = TextEditingValue(
       text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
+      selection: TextSelection.collapsed(
+        offset: newCursorPosition,
+      ),
     );
   }
 
-  void _salvarMatricula() async {
-    String matricula = _matriculaController.text.toUpperCase();
+  Future<void> _salvarMatricula() async {
+    if (_isLoading) return;
+    
+    if (!_formKey.currentState!.validate()) return;
+    if (_mesSelecionado == null || _anoSelecionado == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecione mês e ano de registro')),
+      );
+      return;
+    }
 
-    if (_formKey.currentState!.validate() &&
-        _mesSelecionado != null &&
-        _anoSelecionado != null) {
+    setState(() => _isLoading = true);
+
+    try {
+      String matricula = _matriculaController.text.replaceAll('-', '').toUpperCase();
       
-      try {
-        var querySnapshot = await FirebaseFirestore.instance
-            .collection('matriculas')
-            .where('matricula', isEqualTo: matricula)
-            .get();
+      var query = await FirebaseFirestore.instance
+          .collection('matriculas')
+          .where('matricula', isEqualTo: matricula)
+          .get();
 
-        if (querySnapshot.docs.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Essa matrícula já está cadastrada!')),
-          );
-          return;
-        }
-
-        Map<String, dynamic> novaMatricula = {
-          "matricula": matricula,
-          "marca": _marcaController.text,
-          "modelo": _modeloController.text,
-          "ano": _anoSelecionado,
-          "mes": _mesSelecionado,
-          "dono": _donoController.text, // Adicionando o campo "Dono"
-        };
-
-        await FirebaseFirestore.instance.collection('matriculas').add(novaMatricula);
-
+      if (query.docs.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Matrícula salva com sucesso!')),
+          const SnackBar(content: Text('Matrícula já cadastrada!')),
         );
-
-        // Limpar todos os campos
-        _matriculaController.clear();
-        _marcaController.clear();
-        _modeloController.clear();
-        _donoController.clear(); // Limpa o campo "Dono"
-        setState(() {
-          _mesSelecionado = null;
-          _anoSelecionado = null;
-        });
-
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao salvar: $e')),
-        );
+        return;
       }
+
+      DateTime now = DateTime.now();
+      String dataEuropeia = "${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}";
+
+      await FirebaseFirestore.instance.collection('matriculas').add({
+        'matricula': matricula,
+        'marca': _marcaController.text,
+        'modelo': _modeloController.text,
+        'dono': _donoController.text,
+        'mes': _mesSelecionado,
+        'ano': _anoSelecionado,
+        'data_cadastro': FieldValue.serverTimestamp(),
+        'data_europeia': dataEuropeia,
+      });
+
+      // Clear form after successful submission
+      _matriculaController.clear();
+      _marcaController.clear();
+      _modeloController.clear();
+      _donoController.clear();
+      setState(() {
+        _mesSelecionado = null;
+        _anoSelecionado = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Matrícula cadastrada com sucesso!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro: ${e.toString()}')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     int anoAtual = DateTime.now().year;
-    List<int> anos = List.generate(anoAtual - 1950 + 1, (index) => 1950 + index);
+    List<int> anos = List.generate(anoAtual - 1950 + 1, (index) => 1950 + index).reversed.toList();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Cadastrar Matrículas'),
+        title: const Text('Criar Matrícula', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.black,
-        centerTitle: true,
-        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       backgroundColor: Colors.black,
       body: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Form(
-              key: _formKey,
-              child: Column(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              // License Plate Field
+              TextFormField(
+                controller: _matriculaController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Matrícula',
+                  hintText: 'Ex: AA-11-22 ou 11-AA-22',
+                  hintStyle: const TextStyle(color: Colors.white70),
+                  labelStyle: const TextStyle(color: Colors.white),
+                  border: const OutlineInputBorder(),
+                  enabledBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white),
+                  ),
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.blue),
+                  ),
+                ),
+                onChanged: _formatarMatricula,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Informe a matrícula';
+                  
+                  String cleaned = value.replaceAll('-', '');
+                  
+                  if (cleaned.length != 6) {
+                    return 'Deve ter 6 caracteres (ex: AA-11-22)';
+                  }
+                  
+                  if (!RegExp(r'^[A-Z]{2}\d{4}$').hasMatch(cleaned) && 
+                      !RegExp(r'^\d{2}[A-Z]{2}\d{2}$').hasMatch(cleaned)) {
+                    return 'Formato inválido (ex: AA-11-22 ou 11-AA-22)';
+                  }
+                  
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              
+              // Brand and Model Row
+              Row(
                 children: [
-                  TextFormField(
-                    controller: _matriculaController,
-                    style: TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'Matrícula (00-XX-00, 00-00-XX, XX-00-00)',
-                      labelStyle: TextStyle(color: Colors.white),
-                      border: OutlineInputBorder(),
-                    ),
-                    textCapitalization: TextCapitalization.characters,
-                    onChanged: (value) {
-                      _formatarMatricula(value.toUpperCase());
-                    },
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Informe a matrícula';
-                      }
-                      if (!matriculaRegex.hasMatch(value)) {
-                        return 'Formato inválido! Use 00-XX-00, 00-00-XX ou XX-00-00';
-                      }
-                      return null;
-                    },
-                  ),
-                  SizedBox(height: 10),
-                  TextFormField(
-                    controller: _marcaController,
-                    style: TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'Marca',
-                      labelStyle: TextStyle(color: Colors.white),
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) =>
-                        value!.isEmpty ? 'Informe a marca do veículo' : null,
-                  ),
-                  SizedBox(height: 10),
-                  TextFormField(
-                    controller: _modeloController,
-                    style: TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'Modelo',
-                      labelStyle: TextStyle(color: Colors.white),
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) =>
-                        value!.isEmpty ? 'Informe o modelo do veículo' : null,
-                  ),
-                  SizedBox(height: 10),
-                  TextFormField(
-                    controller: _donoController, // Novo campo
-                    style: TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'Dono',
-                      labelStyle: TextStyle(color: Colors.white),
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) =>
-                        value!.isEmpty ? 'Informe o nome do dono do veículo' : null,
-                  ),
-                  SizedBox(height: 10),
-                  DropdownButtonFormField<int>(
-                    value: _mesSelecionado,
-                    style: TextStyle(color: Colors.white),
-                    dropdownColor: Colors.grey[900],
-                    decoration: InputDecoration(
-                      labelText: 'Mês',
-                      labelStyle: TextStyle(color: Colors.white),
-                      border: OutlineInputBorder(),
-                    ),
-                    items: List.generate(
-                      12,
-                      (index) => DropdownMenuItem(
-                        value: index + 1,
-                        child: Text(
-                          '${index + 1}',
-                          style: TextStyle(color: Colors.white),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _marcaController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Marca',
+                        labelStyle: TextStyle(color: Colors.white),
+                        border: OutlineInputBorder(),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.blue),
                         ),
                       ),
+                      validator: (value) => value!.isEmpty ? 'Informe a marca' : null,
                     ),
-                    onChanged: (value) {
-                      setState(() {
-                        _mesSelecionado = value;
-                      });
-                    },
-                    validator: (value) =>
-                        value == null ? 'Selecione um mês' : null,
                   ),
-                  SizedBox(height: 10),
-                  DropdownButtonFormField<int>(
-                    value: _anoSelecionado,
-                    style: TextStyle(color: Colors.white),
-                    dropdownColor: Colors.grey[900],
-                    decoration: InputDecoration(
-                      labelText: 'Ano',
-                      labelStyle: TextStyle(color: Colors.white),
-                      border: OutlineInputBorder(),
-                    ),
-                    items: anos.map((ano) {
-                      return DropdownMenuItem(
-                        value: ano,
-                        child: Text(
-                          '$ano',
-                          style: TextStyle(color: Colors.white),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _modeloController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Modelo',
+                        labelStyle: TextStyle(color: Colors.white),
+                        border: OutlineInputBorder(),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white),
                         ),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _anoSelecionado = value;
-                      });
-                    },
-                    validator: (value) =>
-                        value == null ? 'Selecione um ano' : null,
-                  ),
-                  SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: _salvarMatricula,
-                    child: Text('Salvar'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(vertical: 15, horizontal: 40),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.blue),
+                        ),
+                      ),
+                      validator: (value) => value!.isEmpty ? 'Informe o modelo' : null,
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              
+              // Owner Field
+              TextFormField(
+                controller: _donoController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Proprietário',
+                  labelStyle: TextStyle(color: Colors.white),
+                  border: OutlineInputBorder(),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.blue),
+                  ),
+                ),
+                validator: (value) => value!.isEmpty ? 'Informe o proprietário' : null,
+              ),
+              const SizedBox(height: 16),
+              
+              // Month and Year Row
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      value: _mesSelecionado,
+                      decoration: const InputDecoration(
+                        labelText: 'Mês',
+                        labelStyle: TextStyle(color: Colors.white),
+                        border: OutlineInputBorder(),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white),
+                        ),
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                      dropdownColor: Colors.grey[900],
+                      items: List.generate(12, (index) => DropdownMenuItem(
+                        value: index + 1,
+                        child: Text('${index + 1}', style: const TextStyle(color: Colors.white)),
+                      )),
+                      onChanged: (value) => setState(() => _mesSelecionado = value),
+                      validator: (value) => value == null ? 'Selecione' : null,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      value: _anoSelecionado,
+                      decoration: const InputDecoration(
+                        labelText: 'Ano',
+                        labelStyle: TextStyle(color: Colors.white),
+                        border: OutlineInputBorder(),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white),
+                        ),
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                      dropdownColor: Colors.grey[900],
+                      items: anos.map((ano) => DropdownMenuItem(
+                        value: ano,
+                        child: Text('$ano', style: const TextStyle(color: Colors.white)),
+                      )).toList(),
+                      onChanged: (value) => setState(() => _anoSelecionado = value),
+                      validator: (value) => value == null ? 'Selecione' : null,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // Submit Button
+              ElevatedButton(
+                onPressed: _isLoading ? null : _salvarMatricula,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('Salvar matricula', style: TextStyle(fontSize: 16)),
+              ),
+            ],
+          ),
         ),
       ),
     );

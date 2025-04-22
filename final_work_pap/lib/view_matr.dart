@@ -6,7 +6,7 @@ class ViewMatr extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Visualizar Matrículas'),
+        title: Text('Visualizar Veiculos'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
       ),
@@ -19,11 +19,11 @@ class ViewMatr extends StatelessWidget {
           }
 
           if (snapshot.hasError) {
-            return Center(child: Text('Erro ao carregar matrículas: ${snapshot.error}', style: TextStyle(color: Colors.white)));
+            return Center(child: Text('Erro ao carregar Veiculos: ${snapshot.error}', style: TextStyle(color: Colors.white)));
           }
 
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(child: Text('Nenhuma matrícula encontrada.', style: TextStyle(color: Colors.white)));
+            return Center(child: Text('Nenhum Veiculos encontrado.', style: TextStyle(color: Colors.white)));
           }
 
           final matriculas = snapshot.data!.docs;
@@ -32,7 +32,7 @@ class ViewMatr extends StatelessWidget {
             itemCount: matriculas.length,
             itemBuilder: (context, index) {
               var matriculaData = matriculas[index].data() as Map<String, dynamic>;
-              var matricula = matriculaData['matricula'] ?? 'Matrícula não disponível';
+              var matricula = matriculaData['matricula'] ?? 'Veiculos não disponível';
               var dono = matriculaData['dono'] ?? 'Dono não disponível';
               var documentId = matriculas[index].id;
 

@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:firebase_core/firebase_core.dart';
 
 class Manag extends StatefulWidget {
   final String matricula;
-
+  
   Manag({required this.matricula});
 
   @override
@@ -13,191 +12,144 @@ class Manag extends StatefulWidget {
 }
 
 class _ManagState extends State<Manag> {
-  final TextEditingController _descricaoController = TextEditingController();
-  final TextEditingController _custoController = TextEditingController();
-  final TextEditingController _dataController = TextEditingController();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final _formKey = GlobalKey<FormState>();
+  TextEditingController _descricaoController = TextEditingController();
+  TextEditingController _custoController = TextEditingController();
+  DateTime? _selectedDate;
+  String? _selectedPonto;
 
-  String? _pontoSelecionado;
-  String _custo = "";
-  DateTime? _dataSelecionada;
-
-  final List<String> _pontosDeManutencao = [
-    'Troca de Óleo',
-    'Verificação de Freios',
+  final List<String> _pontosManutencao = [
+    'Óleo do Motor',
+    'Filtro de Óleo',
+    'Filtro de Ar',
+    'Filtro de Combustível',
+    'Pneus',
+    'Travões',
+    'Correia de Distribuição',
+    'Velas de Ignição',
+    'Bateria',
+    'Sistema de Refrigeração',
     'Alinhamento e Balanceamento',
-    'Substituição de Pneus',
-    'Manutenção de Suspensão',
-    'Verificação do Sistema Elétrico',
+    'Suspensão',
+    'Escapamento',
+    'Faróis e Iluminação',
+    'Ar Condicionado',
+    'Outros'
   ];
 
-  Future<void> _saveManut() async {
-    String descricao = _descricaoController.text.trim();
-    String custo = _custo.trim();
-    String? dataFormatada = _dataSelecionada != null
-        ? DateFormat('yyyy-MM-dd').format(_dataSelecionada!)
-        : null;
+  Future<void> _selecionarData(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
+  }
 
-    if (_pontoSelecionado != null && descricao.isNotEmpty &&
-        custo.isNotEmpty && dataFormatada != null) {
+  Future<void> _salvarManutencao() async {
+    if (_formKey.currentState!.validate()) {
+      if (_selectedDate == null || _selectedPonto == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Por favor, selecione a data e o ponto de manutenção')),
+        );
+        return;
+      }
+
       try {
-        await _firestore
+        await FirebaseFirestore.instance
             .collection('aut_consum')
             .doc(widget.matricula)
             .collection('manut')
             .add({
-          'ponto': _pontoSelecionado,
-          'descricao': descricao,
-          'custo': double.tryParse(custo) ?? 0.0,
-          'data': dataFormatada,
-          'matricula': widget.matricula,
+          'descricao': _descricaoController.text,
+          'custo': double.tryParse(_custoController.text) ?? 0.0,
+          'ponto': _selectedPonto,
+          'data': DateFormat('dd-MM-yyyy').format(_selectedDate!),
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Manutenção salva com sucesso!')),
-        );
-
-        setState(() {
-          _pontoSelecionado = null;
-          _descricaoController.clear();
-          _custoController.clear();
-          _custo = "";
-          _dataSelecionada = null;
-          _dataController.clear();
-        });
+        Navigator.pop(context, true);
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao salvar: $e')),
+          SnackBar(content: Text('Erro ao salvar manutenção: $e')),
         );
       }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Por favor, preencha todos os campos.')),
-      );
-    }
-  }
-
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _dataSelecionada ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.dark().copyWith(
-            primaryColor: Colors.black,
-            hintColor: Colors.white,
-            colorScheme: ColorScheme.dark(primary: Colors.white),
-            dialogBackgroundColor: Colors.black,
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(foregroundColor: Colors.white),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      setState(() {
-        _dataSelecionada = picked;
-        _dataController.text = DateFormat('yyyy-MM-dd').format(picked);
-      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Manutenção - ${widget.matricula}'),
-        backgroundColor: Colors.black,
-        centerTitle: true,
-        foregroundColor: Colors.white,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      appBar: AppBar(title: Text('Adicionar Manutenção')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              readOnly: true,
-              controller: _dataController,
-              decoration: InputDecoration(
-                labelText: 'Data',
-                filled: true,
-                fillColor: Colors.black,
-                border: OutlineInputBorder(),
-                labelStyle: TextStyle(color: Colors.white),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _selectedDate == null
+                          ? 'Nenhuma data selecionada'
+                          : 'Data: ${DateFormat('dd-MM-yyyy').format(_selectedDate!)}',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => _selecionarData(context),
+                    child: Text('Selecionar Data'),
+                  ),
+                ],
               ),
-              style: TextStyle(color: Colors.white),
-              onTap: () => _selectDate(context),
-            ),
-            SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              decoration: InputDecoration(
-                labelText: 'Ponto de Manutenção',
-                filled: true,
-                fillColor: Colors.black,
-                border: OutlineInputBorder(),
-                labelStyle: TextStyle(color: Colors.white),
+              SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                decoration: InputDecoration(labelText: 'Ponto de Manutenção'),
+                value: _selectedPonto,
+                items: _pontosManutencao.map((String ponto) {
+                  return DropdownMenuItem<String>(
+                    value: ponto,
+                    child: Text(ponto),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedPonto = newValue;
+                  });
+                },
+                validator: (value) => value == null ? 'Selecione um ponto' : null,
               ),
-              dropdownColor: Colors.black,
-              value: _pontoSelecionado,
-              onChanged: (String? newValue) {
-                setState(() {
-                  _pontoSelecionado = newValue;
-                });
-              },
-              items: _pontosDeManutencao.map((String ponto) {
-                return DropdownMenuItem<String>(
-                  value: ponto,
-                  child: Text(ponto, style: TextStyle(color: Colors.white)),
-                );
-              }).toList(),
-            ),
-            SizedBox(height: 10),
-            TextField(
-              controller: _descricaoController,
-              decoration: InputDecoration(
-                labelText: 'Descrição',
-                filled: true,
-                fillColor: Colors.black,
-                border: OutlineInputBorder(),
-                labelStyle: TextStyle(color: Colors.white),
+              SizedBox(height: 16),
+              TextFormField(
+                controller: _descricaoController,
+                decoration: InputDecoration(labelText: 'Descrição'),
+                maxLines: 4,
+                validator: (value) => value!.isEmpty ? 'Informe a descrição' : null,
               ),
-              style: TextStyle(color: Colors.white),
-            ),
-            SizedBox(height: 10),
-            TextField(
-              controller: _custoController,
-              decoration: InputDecoration(
-                labelText: 'Custo (€)',
-                filled: true,
-                fillColor: Colors.black,
-                border: OutlineInputBorder(),
-                labelStyle: TextStyle(color: Colors.white),
+              SizedBox(height: 16),
+              TextFormField(
+                controller: _custoController,
+                decoration: InputDecoration(labelText: 'Custo (€)'),
+                keyboardType: TextInputType.number,
+                validator: (value) => value!.isEmpty ? 'Informe o custo' : null,
               ),
-              keyboardType: TextInputType.number,
-              style: TextStyle(color: Colors.white),
-            ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _saveManut,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
+              SizedBox(height: 20),
+              Center(
+                child: ElevatedButton(
+                  onPressed: _salvarManutencao,
+                  child: Text('Salvar'),
+                ),
               ),
-              child: Text('Salvar Manutenção'),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-      backgroundColor: Colors.black,
     );
   }
 }
